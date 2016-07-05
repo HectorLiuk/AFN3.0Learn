@@ -144,19 +144,23 @@ typedef void (^AFURLSessionTaskCompletionHandler)(NSURLResponse *response, id re
 
 - (void)setupProgressForTask:(NSURLSessionTask *)task {
     __weak __typeof__(task) weakTask = task;
-
-    self.uploadProgress.totalUnitCount = task.countOfBytesExpectedToSend;
-    self.downloadProgress.totalUnitCount = task.countOfBytesExpectedToReceive;
-    [self.uploadProgress setCancellable:YES];
+    //计算发送和接收数据进度
+    self.uploadProgress.totalUnitCount = task.countOfBytesExpectedToSend; //上传进度 发送字节
+    self.downloadProgress.totalUnitCount = task.countOfBytesExpectedToReceive;//下载进度 接收多少字节
+    
+    //NSProgress 状态 正好和 NSUrlSessionTask 状态想对应
+    [self.uploadProgress setCancellable:YES]; //上传是否终止
     [self.uploadProgress setCancellationHandler:^{
         __typeof__(weakTask) strongTask = weakTask;
         [strongTask cancel];
     }];
-    [self.uploadProgress setPausable:YES];
+    
+    [self.uploadProgress setPausable:YES]; //可行
     [self.uploadProgress setPausingHandler:^{
         __typeof__(weakTask) strongTask = weakTask;
         [strongTask suspend];
     }];
+    
     if ([self.uploadProgress respondsToSelector:@selector(setResumingHandler:)]) {
         [self.uploadProgress setResumingHandler:^{
             __typeof__(weakTask) strongTask = weakTask;
@@ -182,6 +186,7 @@ typedef void (^AFURLSessionTaskCompletionHandler)(NSURLResponse *response, id re
         }];
     }
 
+    //监控session task 发送和接收数据大小
     [task addObserver:self
            forKeyPath:NSStringFromSelector(@selector(countOfBytesReceived))
               options:NSKeyValueObservingOptionNew
@@ -200,6 +205,8 @@ typedef void (^AFURLSessionTaskCompletionHandler)(NSURLResponse *response, id re
               options:NSKeyValueObservingOptionNew
               context:NULL];
 
+    
+    //监控进度 fractionCompleted代表（0~1）
     [self.downloadProgress addObserver:self
                             forKeyPath:NSStringFromSelector(@selector(fractionCompleted))
                                options:NSKeyValueObservingOptionNew
@@ -220,6 +227,7 @@ typedef void (^AFURLSessionTaskCompletionHandler)(NSURLResponse *response, id re
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary<NSString *,id> *)change context:(void *)context {
+    //对进度的更新
     if ([object isKindOfClass:[NSURLSessionTask class]] || [object isKindOfClass:[NSURLSessionDownloadTask class]]) {
         if ([keyPath isEqualToString:NSStringFromSelector(@selector(countOfBytesReceived))]) {
             self.downloadProgress.completedUnitCount = [change[NSKeyValueChangeNewKey] longLongValue];
@@ -231,6 +239,7 @@ typedef void (^AFURLSessionTaskCompletionHandler)(NSURLResponse *response, id re
             self.uploadProgress.totalUnitCount = [change[NSKeyValueChangeNewKey] longLongValue];
         }
     }
+    //用户自定义当前进度回调，类型下载进度。 在回调写UI进度刷新
     else if ([object isEqual:self.downloadProgress]) {
         if (self.downloadProgressBlock) {
             self.downloadProgressBlock(object);
@@ -600,11 +609,15 @@ static NSString * const AFNSURLSessionTaskDidSuspendNotification = @"com.alamofi
 {
     NSParameterAssert(task);
     NSParameterAssert(delegate);
-
+//接着就是使用NSLock来加锁，和@synchronized作用类似，不过@synchronized多了一个可以使用变量作为互斥信号量的功能，
     [self.lock lock];
+    
     self.mutableTaskDelegatesKeyedByTaskIdentifier[@(task.taskIdentifier)] = delegate;
+    //监控上传下载实时进度
     [delegate setupProgressForTask:task];
+    
     [self addNotificationObserverForTask:task];
+    
     [self.lock unlock];
 }
 
@@ -613,11 +626,15 @@ static NSString * const AFNSURLSessionTaskDidSuspendNotification = @"com.alamofi
               downloadProgress:(nullable void (^)(NSProgress *downloadProgress)) downloadProgressBlock
              completionHandler:(void (^)(NSURLResponse *response, id responseObject, NSError *error))completionHandler
 {
+    
     AFURLSessionManagerTaskDelegate *delegate = [[AFURLSessionManagerTaskDelegate alloc] init];
+    //AFURLSessionManagerTaskDelegate和NSURLSessionTask的关系是由AFURLSessionManager管理的。
     delegate.manager = self;
     delegate.completionHandler = completionHandler;
 
     dataTask.taskDescription = self.taskDescriptionForSessionTasks;
+    
+    //意思是AFURLSessionManagerTaskDelegate 的代理将由AFURLSessionManager来执行
     [self setDelegate:delegate forTask:dataTask];
 
     delegate.uploadProgressBlock = uploadProgressBlock;
@@ -633,7 +650,6 @@ static NSString * const AFNSURLSessionTaskDidSuspendNotification = @"com.alamofi
     delegate.completionHandler = completionHandler;
 
     uploadTask.taskDescription = self.taskDescriptionForSessionTasks;
-
     [self setDelegate:delegate forTask:uploadTask];
 
     delegate.uploadProgressBlock = uploadProgressBlock;
