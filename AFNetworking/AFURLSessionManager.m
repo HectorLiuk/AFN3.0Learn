@@ -965,8 +965,8 @@ static NSString * const AFNSURLSessionTaskDidSuspendNotification = @"com.alamofi
     return [[self class] instancesRespondToSelector:selector];
 }
 
-#pragma mark - NSURLSessionDelegate
-
+#pragma mark - 实现系统的关于NSURLSessionDelegate
+//当前这个session已经失效时，该代理方法被调用。
 - (void)URLSession:(NSURLSession *)session
 didBecomeInvalidWithError:(NSError *)error
 {
