@@ -617,7 +617,7 @@ forHTTPHeaderField:(NSString *)field
                        context:(void *)context
 {
     if (context == AFHTTPRequestSerializerObserverContext) {
-        //监控新值得变化
+        //监控新值的变化
         if ([change[NSKeyValueChangeNewKey] isEqual:[NSNull null]]) {
             [self.mutableObservedChangedKeyPaths removeObject:keyPath];
         } else {

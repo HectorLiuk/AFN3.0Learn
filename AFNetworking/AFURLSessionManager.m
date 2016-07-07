@@ -442,10 +442,13 @@ static NSString * const AFNSURLSessionTaskDidSuspendNotification = @"com.alamofi
 }
 
 + (void)swizzleResumeAndSuspendMethodForClass:(Class)theClass {
+    // 因为af_resume和af_suspend都是类的实例方法，所以使用class_getInstanceMethod获取这两个方法
     Method afResumeMethod = class_getInstanceMethod(self, @selector(af_resume));
     Method afSuspendMethod = class_getInstanceMethod(self, @selector(af_suspend));
-
+    
+    // 给theClass添加一个名为af_resume的方法，使用@selector(af_resume)获取方法名，使用afResumeMethod作为方法实现
     if (af_addMethod(theClass, @selector(af_resume), afResumeMethod)) {
+        // 交换resume和af_resume的方法实现
         af_swizzleSelector(theClass, @selector(resume), @selector(af_resume));
     }
 
@@ -1112,6 +1115,12 @@ didCompleteWithError:(NSError *)error
 
 #pragma mark - NSURLSessionDataDelegate
 
+
+//告诉代理，该data task获取到了服务器端传回的最初始回复（response）。注意其中的completionHandler这个block，通过传入一个类型为NSURLSessionResponseDisposition的变量来决定该传输任务接下来该做什么：
+//
+//NSURLSessionResponseAllow 该task正常进行
+//NSURLSessionResponseCancel 该task会被取消
+//NSURLSessionResponseBecomeDownload 会调用URLSession:dataTask:didBecomeDownloadTask:方法来新建一个download task以代替当前的data task
 - (void)URLSession:(NSURLSession *)session
           dataTask:(NSURLSessionDataTask *)dataTask
 didReceiveResponse:(NSURLResponse *)response
@@ -1128,6 +1137,7 @@ didReceiveResponse:(NSURLResponse *)response
     }
 }
 
+//如果data task变化成了下载任务（download task），那么就会调用该代理方法
 - (void)URLSession:(NSURLSession *)session
           dataTask:(NSURLSessionDataTask *)dataTask
 didBecomeDownloadTask:(NSURLSessionDownloadTask *)downloadTask
@@ -1143,6 +1153,7 @@ didBecomeDownloadTask:(NSURLSessionDownloadTask *)downloadTask
     }
 }
 
+//当接收到部分期望得到的数据（expected data）时，会调用该代理方法。
 - (void)URLSession:(NSURLSession *)session
           dataTask:(NSURLSessionDataTask *)dataTask
     didReceiveData:(NSData *)data
@@ -1181,31 +1192,38 @@ didBecomeDownloadTask:(NSURLSessionDownloadTask *)downloadTask
 }
 
 #pragma mark - NSURLSessionDownloadDelegate
-
+//告诉代理，该下载任务已完成。
 - (void)URLSession:(NSURLSession *)session
       downloadTask:(NSURLSessionDownloadTask *)downloadTask
 didFinishDownloadingToURL:(NSURL *)location
 {
     AFURLSessionManagerTaskDelegate *delegate = [self delegateForTask:downloadTask];
     if (self.downloadTaskDidFinishDownloading) {
+        // 自定义函数，根据从服务器端获取到的数据临时地址location等参数构建出你想要将临时文件移动的位置
         NSURL *fileURL = self.downloadTaskDidFinishDownloading(session, downloadTask, location);
+        // 如果fileURL存在的话，表示用户希望把临时数据存起来
         if (fileURL) {
             delegate.downloadFileURL = fileURL;
             NSError *error = nil;
+            // 将位于location位置的文件全部移到fileURL位置
             [[NSFileManager defaultManager] moveItemAtURL:location toURL:fileURL error:&error];
             if (error) {
+                // 如果移动文件失败，就发送AFURLSessionDownloadTaskDidFailToMoveFileNotification
                 [[NSNotificationCenter defaultCenter] postNotificationName:AFURLSessionDownloadTaskDidFailToMoveFileNotification object:downloadTask userInfo:error.userInfo];
             }
-
+            
             return;
         }
     }
-
     if (delegate) {
         [delegate URLSession:session downloadTask:downloadTask didFinishDownloadingToURL:location];
     }
 }
 
+//周期性地通知下载进度。
+// bytesWritten 表示自上次调用该方法后，接收到的数据字节数
+// totalBytesWritten 表示目前已经接收到的数据字节数
+// totalBytesExpectedToWrite 表示期望收到的文件总字节数，是由Content-Length header提供。如果没有提供，默认是NSURLSessionTransferSizeUnknown
 - (void)URLSession:(NSURLSession *)session
       downloadTask:(NSURLSessionDownloadTask *)downloadTask
       didWriteData:(int64_t)bytesWritten
@@ -1217,6 +1235,9 @@ totalBytesExpectedToWrite:(int64_t)totalBytesExpectedToWrite
     }
 }
 
+//告诉代理，下载任务重新开始下载了。
+// fileOffset如果文件缓存策略或者最后文件更新日期阻止重用已经存在的文件内容，那么该值为0。
+// 否则，该值表示已经存在磁盘上的，不需要重新获取的数据——— 这是断点续传啊！
 - (void)URLSession:(NSURLSession *)session
       downloadTask:(NSURLSessionDownloadTask *)downloadTask
  didResumeAtOffset:(int64_t)fileOffset
