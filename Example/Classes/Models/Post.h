@@ -21,6 +21,7 @@
 // THE SOFTWARE.
 
 #import <Foundation/Foundation.h>
+@import AFNetworking;
 
 @class User;
 

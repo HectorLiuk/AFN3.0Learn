@@ -24,7 +24,6 @@
 #import "User.h"
 
 #import "AFAppDotNetAPIClient.h"
-
 @implementation Post
 
 - (instancetype)initWithAttributes:(NSDictionary *)attributes {
@@ -61,6 +60,7 @@
         }
     }];
 }
+
 
 @end
 

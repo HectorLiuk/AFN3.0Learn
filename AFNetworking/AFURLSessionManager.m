@@ -294,6 +294,7 @@ didCompleteWithError:(NSError *)error
     } else {
         dispatch_async(url_session_manager_processing_queue(), ^{
             NSError *serializationError = nil;
+            // 根据对应的task和data将response data解析成可用的数据格式，比如JSON serializer就将data解析成JSON格式
             responseObject = [manager.responseSerializer responseObjectForResponse:task.response data:data error:&serializationError];
 
             if (self.downloadFileURL) {
